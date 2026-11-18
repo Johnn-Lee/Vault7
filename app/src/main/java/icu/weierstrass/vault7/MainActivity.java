@@ -271,8 +271,13 @@ public final class MainActivity extends Activity {
         if (request != PICK_FOLDER || result != RESULT_OK || data == null || data.getData() == null) return;
         Uri folder = data.getData();
         try {
+            int required = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+            if ((data.getFlags() & required) != required) {
+                toast("请选择可读取和写入的输出目录");
+                return;
+            }
             getContentResolver().takePersistableUriPermission(folder,
-                    data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION));
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
             settings.edit().putString(DIRECTORY, folder.toString()).apply();
             updateSetup();
         } catch (SecurityException e) {
