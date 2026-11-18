@@ -1,12 +1,15 @@
 package icu.weierstrass.vault7;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -105,6 +108,8 @@ public final class BackupService extends Service {
         if (canceled) return;
         status = new Status(true, text);
         main.post(() -> {
+            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) return;
             if (status.running() && !canceled) {
                 getSystemService(NotificationManager.class).notify(NOTIFICATION, notification(text));
             }

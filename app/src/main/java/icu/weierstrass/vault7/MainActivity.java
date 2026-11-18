@@ -113,7 +113,7 @@ public final class MainActivity extends Activity {
         LinearLayout form = panel(page);
         form.addView(text("备份方式", 17, INK));
         modes = new Spinner(this);
-        modes.setId(101);
+        modes.setId(R.id.backup_mode);
         var adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
                 new String[]{"手动 · 指定日期", "手动 · 单包大小上限",
                         "批量 · 每隔 N 天生成一包", "批量 · 按大小分包"});
@@ -130,11 +130,13 @@ public final class MainActivity extends Activity {
         endRow.addView(endButton);
 
         daysRow = row(form, "每包天数");
-        days = number(102, "30", false);
+        days = number("30", false);
+        days.setId(R.id.backup_days);
         daysRow.addView(days, new LinearLayout.LayoutParams(dp(110), -2));
 
         limitRow = row(form, "每包上限（MiB）");
-        limit = number(103, "2048", true);
+        limit = number("2048", true);
+        limit.setId(R.id.backup_limit);
         limitRow.addView(limit, new LinearLayout.LayoutParams(dp(110), -2));
 
         modes.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
@@ -394,9 +396,8 @@ public final class MainActivity extends Activity {
         return view;
     }
 
-    private EditText number(int id, String initial, boolean decimal) {
+    private EditText number(String initial, boolean decimal) {
         EditText input = new EditText(this);
-        input.setId(id);
         input.setSingleLine(true);
         input.setText(initial);
         input.setInputType(InputType.TYPE_CLASS_NUMBER | (decimal ? InputType.TYPE_NUMBER_FLAG_DECIMAL : 0));

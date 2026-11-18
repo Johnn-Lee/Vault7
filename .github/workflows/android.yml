@@ -50,6 +50,11 @@ jobs:
           VAULT7_KEY_PASSWORD: ${{ secrets.VAULT7_KEY_PASSWORD }}
           VAULT7_KEY_ALIAS: ${{ secrets.VAULT7_KEY_ALIAS }}
         run: gradle --no-daemon :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease
+      - name: Print lint details on failure
+        if: failure()
+        run: |
+          report=app/build/intermediates/lint_intermediate_text_report/release/lintReportRelease/lint-results-release.txt
+          if [[ -f "$report" ]]; then cat "$report"; fi
       - name: Verify 7-Zip interoperability
         working-directory: app/build/verification
         run: |

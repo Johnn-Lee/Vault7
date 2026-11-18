@@ -2,6 +2,7 @@ package icu.weierstrass.vault7;
 
 import android.content.ContentResolver;
 import android.content.Context;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.ParcelFileDescriptor;
 import android.provider.DocumentsContract;
@@ -9,8 +10,11 @@ import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.security.GeneralSecurityException;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -30,6 +34,7 @@ final class BackupEngine {
     private int written;
     private int archives;
     private int alreadyBackedUp;
+    private Set<String> archiveNames;
 
     BackupEngine(Context context, BackupPlan plan, Uri folder, char[] password,
                  SevenZip.Checkpoint checkpoint, Progress progress) {
@@ -124,8 +129,10 @@ final class BackupEngine {
         Uri parent = DocumentsContract.buildDocumentUriUsingTree(folder, DocumentsContract.getTreeDocumentId(folder));
         LocalDate first = plan.date(pack.items.get(0).time());
         LocalDate last = plan.date(pack.items.get(pack.items.size() - 1).time());
-        String name = "Vault7_" + first + "_" + last + "_" + UUID.randomUUID().toString().substring(0, 12) + ".7z";
-        Uri temporary = DocumentsContract.createDocument(resolver, parent, "application/octet-stream", name + ".partial");
+        if (archiveNames == null) archiveNames = listNames(resolver);
+        String name = archiveName(first, last, archiveNames);
+        Uri temporary = DocumentsContract.createDocument(resolver, parent,
+                "application/octet-stream", "Vault7_" + UUID.randomUUID() + ".partial");
         if (temporary == null) throw new IOException("无法创建临时压缩包，请检查输出目录");
         boolean published = false;
         try {
@@ -159,6 +166,32 @@ final class BackupEngine {
                 }
             }
         }
+    }
+
+    private Set<String> listNames(ContentResolver resolver) throws IOException {
+        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(
+                folder, DocumentsContract.getTreeDocumentId(folder));
+        Set<String> names = new HashSet<>();
+        try (Cursor rows = resolver.query(children,
+                new String[]{DocumentsContract.Document.COLUMN_DISPLAY_NAME}, null, null, null)) {
+            if (rows == null) throw new IOException("无法读取输出目录");
+            while (rows.moveToNext()) {
+                checkpoint.check();
+                String name = rows.getString(0);
+                if (name != null) names.add(name.toLowerCase(Locale.ROOT));
+            }
+        }
+        return names;
+    }
+
+    private static String archiveName(LocalDate first, LocalDate last, Set<String> names) {
+        DateTimeFormatter format = DateTimeFormatter.BASIC_ISO_DATE;
+        String base = first.format(format) + "_" + last.format(format);
+        String result = base + ".7z";
+        for (int suffix = 2; !names.add(result); suffix++) {
+            result = base + String.format(Locale.ROOT, "_%02d.7z", suffix);
+        }
+        return result;
     }
 
     private static final class Pack {
