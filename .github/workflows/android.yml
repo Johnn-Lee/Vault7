@@ -29,8 +29,36 @@ jobs:
           gradle-version: '8.11.1'
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Restore APK signing key if configured
+        env:
+          SIGNING_KEY: ${{ secrets.VAULT7_KEYSTORE_BASE64 }}
+        run: |
+          if [[ -n "$SIGNING_KEY" ]]; then
+            printf '%s' "$SIGNING_KEY" | base64 -d > "$RUNNER_TEMP/vault7.jks"
+            echo "VAULT7_KEYSTORE=$RUNNER_TEMP/vault7.jks" >> "$GITHUB_ENV"
+          fi
       - name: Verify and build
+        env:
+          VAULT7_STORE_PASSWORD: ${{ secrets.VAULT7_STORE_PASSWORD }}
+          VAULT7_KEY_PASSWORD: ${{ secrets.VAULT7_KEY_PASSWORD }}
+          VAULT7_KEY_ALIAS: ${{ secrets.VAULT7_KEY_ALIAS }}
         run: gradle --no-daemon :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease
+      - name: Verify 7-Zip interoperability
+        working-directory: app/build/verification
+        run: |
+          password='Vault7测试!2026'
+          if 7z l -pwrong sample.7z >/dev/null 2>&1; then
+            echo "Archive filenames were readable with the wrong password"
+            exit 1
+          fi
+          for archive in *.7z; do
+            7z t "-p$password" "$archive"
+          done
+          7z x -y "-p$password" -oextracted sample.7z
+          diff -rq expected extracted
+      - name: Verify APK signature
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
       - name: Publish first release
         if: github.ref == 'refs/heads/main'
         env:
@@ -42,4 +70,4 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk Vault7-v0.1.0.apk
           sha256sum Vault7-v0.1.0.apk > Vault7-v0.1.0.apk.sha256
           gh release create v0.1.0 Vault7-v0.1.0.apk Vault7-v0.1.0.apk.sha256 \
-            --target "$GITHUB_SHA" --title "Vault7 0.1.0" --generate-notes
+            --target "$GITHUB_SHA" --title "Vault7 0.1.0" --prerelease --generate-notes

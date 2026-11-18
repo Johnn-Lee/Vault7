@@ -1,0 +1,45 @@
+plugins {
+    id 'com.android.application' version '8.9.1'
+}
+
+android {
+    namespace 'icu.weierstrass.vault7'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'icu.weierstrass.vault7'
+        minSdk 30
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0'
+    }
+
+    signingConfigs {
+        if (System.getenv('VAULT7_KEYSTORE')) {
+            production {
+                storeFile file(System.getenv('VAULT7_KEYSTORE'))
+                storePassword System.getenv('VAULT7_STORE_PASSWORD')
+                keyAlias System.getenv('VAULT7_KEY_ALIAS')
+                keyPassword System.getenv('VAULT7_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            signingConfig signingConfigs.findByName('production') ?: signingConfigs.debug
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
