@@ -53,6 +53,7 @@ public final class MainActivity extends Activity {
     private Button permissionButton;
     private Button folderButton;
     private Button passwordButton;
+    private Button clearMarksButton;
     private Button runButton;
     private Button cancelButton;
     private Button startButton;
@@ -109,6 +110,8 @@ public final class MainActivity extends Activity {
         setup.addView(folderButton);
         passwordButton = button("", this::editPassword);
         setup.addView(passwordButton);
+        clearMarksButton = button("清除备份标记", this::confirmClearMarks);
+        setup.addView(clearMarksButton);
 
         LinearLayout form = panel(page);
         form.addView(text("备份方式", 17, INK));
@@ -134,8 +137,8 @@ public final class MainActivity extends Activity {
         days.setId(R.id.backup_days);
         daysRow.addView(days, new LinearLayout.LayoutParams(dp(110), -2));
 
-        limitRow = row(form, "每包上限（MiB）");
-        limit = number("2048", true);
+        limitRow = row(form, "每包上限（MB）");
+        limit = number("1500", true);
         limit.setId(R.id.backup_limit);
         limitRow.addView(limit, new LinearLayout.LayoutParams(dp(110), -2));
 
@@ -320,8 +323,21 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private void confirmClearMarks() {
+        if (BackupService.status().busy()) return;
+        new AlertDialog.Builder(this)
+                .setTitle("清除全部备份标记？")
+                .setMessage("下次会重新打包所选范围内的照片和视频。已有压缩包会保留。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("清除", (dialog, which) -> {
+                    BackupService.clearMarks(this);
+                    updateStatus();
+                })
+                .show();
+    }
+
     private void begin() {
-        if (BackupService.status().running()) return;
+        if (BackupService.status().busy()) return;
         if (!hasFullAccess()) {
             requestMedia();
             return;
@@ -340,7 +356,7 @@ public final class MainActivity extends Activity {
             int dayCount = selected == BackupPlan.Mode.EVERY_N_DAYS
                     ? Integer.parseInt(days.getText().toString().trim()) : 0;
             long bytes = selected.sizeLimited() ? new BigDecimal(limit.getText().toString().trim())
-                    .multiply(BigDecimal.valueOf(1_048_576))
+                    .multiply(BigDecimal.valueOf(1_000_000))
                     .setScale(0, RoundingMode.FLOOR).longValueExact() : 0;
             LocalDate until = selected == BackupPlan.Mode.EVERY_N_DAYS ? null : end;
             ZoneId zone = ZoneId.systemDefault();
@@ -350,8 +366,8 @@ public final class MainActivity extends Activity {
                     .putExtra("start", start == null ? null : start.toString())
                     .putExtra("end", until == null ? null : until.toString())
                     .putExtra("days", dayCount).putExtra("limit", bytes).putExtra("zone", zone.getId());
-            startForegroundService(intent);
-            runButton.setEnabled(false);
+            BackupService.startBackup(this, intent);
+            updateStatus();
         } catch (NumberFormatException | ArithmeticException e) {
             toast("请输入有效的天数或大小上限");
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
@@ -370,9 +386,10 @@ public final class MainActivity extends Activity {
     private void updateStatus() {
         BackupService.Status current = BackupService.status();
         if (!current.message().contentEquals(status.getText())) status.setText(current.message());
-        runButton.setEnabled(!current.running());
-        folderButton.setEnabled(!current.running());
-        passwordButton.setEnabled(!current.running());
+        runButton.setEnabled(!current.busy());
+        folderButton.setEnabled(!current.busy());
+        passwordButton.setEnabled(!current.busy());
+        clearMarksButton.setEnabled(!current.busy());
         cancelButton.setVisibility(current.running() ? View.VISIBLE : View.GONE);
     }
 

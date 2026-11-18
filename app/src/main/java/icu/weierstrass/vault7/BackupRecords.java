@@ -31,6 +31,10 @@ final class BackupRecords extends SQLiteOpenHelper {
         return result;
     }
 
+    int clear() {
+        return getWritableDatabase().delete("media", null, null);
+    }
+
     void record(List<MediaCatalogue.Item> items, String archive) {
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();

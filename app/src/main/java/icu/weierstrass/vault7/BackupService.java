@@ -6,6 +6,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -23,13 +24,52 @@ public final class BackupService extends Service {
     private static final String CHANNEL = "backup";
     private static final int NOTIFICATION = 7;
 
-    record Status(boolean running, String message) {}
-    private static volatile Status status = new Status(false, "还没有运行备份");
+    enum Phase { IDLE, STARTING, BACKING_UP, CLEARING }
+
+    record Status(Phase phase, String message) {
+        boolean busy() {
+            return phase != Phase.IDLE;
+        }
+
+        boolean running() {
+            return phase == Phase.BACKING_UP;
+        }
+    }
+
+    private static volatile Status status = new Status(Phase.IDLE, "还没有运行备份");
     private final Handler main = new Handler(Looper.getMainLooper());
     private volatile boolean canceled;
 
     static Status status() {
         return status;
+    }
+
+    static void startBackup(Context context, Intent intent) {
+        // Requests originate on the UI thread, as does onStartCommand.
+        Status previous = status;
+        if (previous.busy()) return;
+        status = new Status(Phase.STARTING, "正在启动备份…");
+        try {
+            context.startForegroundService(intent);
+        } catch (RuntimeException e) {
+            status = previous;
+            throw e;
+        }
+    }
+
+    static void clearMarks(Context context) {
+        if (status.busy()) return;
+        status = new Status(Phase.CLEARING, "正在清除备份标记…");
+        Context app = context.getApplicationContext();
+        new Thread(() -> {
+            String message;
+            try (BackupRecords records = new BackupRecords(app)) {
+                message = "已清除 " + records.clear() + " 个备份标记。";
+            } catch (RuntimeException e) {
+                message = "无法清除备份标记，请重试。";
+            }
+            status = new Status(Phase.IDLE, message);
+        }, "vault7-clear-marks").start();
     }
 
     @Override public IBinder onBind(Intent intent) {
@@ -42,20 +82,21 @@ public final class BackupService extends Service {
             return START_NOT_STICKY;
         }
         if (CANCEL.equals(intent.getAction())) {
-            if (status.running) {
+            if (status.running()) {
                 canceled = true;
-                status = new Status(true, "正在取消…");
-            } else {
+                status = new Status(Phase.BACKING_UP, "正在取消…");
+            } else if (status.phase() != Phase.STARTING) {
                 stopSelf();
             }
             return START_NOT_STICKY;
         }
-        if (status.running) return START_NOT_STICKY;
+        if (status.running()) return START_NOT_STICKY;
 
         NotificationManager notifications = getSystemService(NotificationManager.class);
         notifications.createNotificationChannel(new NotificationChannel(
                 CHANNEL, "相册备份", NotificationManager.IMPORTANCE_LOW));
-        status = new Status(true, "正在扫描相册…");
+        canceled = false;
+        status = new Status(Phase.BACKING_UP, "正在扫描相册…");
         startForeground(NOTIFICATION, notification(status.message));
         new Thread(() -> run(intent), "vault7-backup").start();
         return START_NOT_STICKY;
@@ -86,7 +127,7 @@ public final class BackupService extends Service {
         }
         String message = result;
         main.post(() -> {
-            status = new Status(false, message);
+            status = new Status(Phase.IDLE, message);
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
         });
@@ -106,7 +147,7 @@ public final class BackupService extends Service {
 
     private void progress(String text) {
         if (canceled) return;
-        status = new Status(true, text);
+        status = new Status(Phase.BACKING_UP, text);
         main.post(() -> {
             if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                     != PackageManager.PERMISSION_GRANTED) return;
