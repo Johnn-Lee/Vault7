@@ -21,8 +21,13 @@ final class MediaCatalogue {
             MediaColumns.GENERATION_ADDED, MediaColumns.GENERATION_MODIFIED
     };
 
-    record Item(Uri uri, String name, long size, long time, long added,
+    record Item(Uri uri, String version, String name, long size, long time, long added,
                 long modified, long createdGeneration, long modifiedGeneration) {
+        String key() {
+            return uri + "|" + version + "|" + createdGeneration + "|" + modifiedGeneration
+                    + "|" + added + "|" + modified + "|" + size;
+        }
+
         SevenZip.Entry entry(String archiveName, ContentResolver resolver) {
             return new SevenZip.Entry(archiveName, size, time, () -> {
                 if (size < 0) throw new IOException("媒体大小未知：" + name);
@@ -37,14 +42,15 @@ final class MediaCatalogue {
         List<Item> result = new ArrayList<>();
         for (String volume : MediaStore.getExternalVolumeNames(context)) {
             checkpoint.check();
-            collect(context, MediaStore.Images.Media.getContentUri(volume), result, checkpoint);
-            collect(context, MediaStore.Video.Media.getContentUri(volume), result, checkpoint);
+            String version = MediaStore.getVersion(context, volume);
+            collect(context, MediaStore.Images.Media.getContentUri(volume), version, result, checkpoint);
+            collect(context, MediaStore.Video.Media.getContentUri(volume), version, result, checkpoint);
         }
         result.sort(Comparator.comparingLong(Item::time).thenComparing(item -> item.uri.toString()));
         return result;
     }
 
-    private static void collect(Context context, Uri collection,
+    private static void collect(Context context, Uri collection, String version,
                                 List<Item> result, SevenZip.Checkpoint checkpoint) throws IOException {
         try (Cursor rows = context.getContentResolver().query(collection, COLUMNS, null, null, null)) {
             if (rows == null) throw new IOException("无法读取相册");
@@ -57,7 +63,7 @@ final class MediaCatalogue {
                 long time = rows.getLong(3);
                 if (time <= 0) time = (added > 0 ? added : Math.max(0, modified)) * 1000L;
                 long size = rows.isNull(2) ? -1 : rows.getLong(2);
-                result.add(new Item(uri, name == null ? "media" : name, size, time,
+                result.add(new Item(uri, version, name == null ? "media" : name, size, time,
                         added, modified, rows.getLong(6), rows.getLong(7)));
             }
         }
